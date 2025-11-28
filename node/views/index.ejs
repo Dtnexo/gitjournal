@@ -8,7 +8,10 @@
     <strong><%= since || '—' %></strong>
   </p>
 
-  <p><strong>Total:</strong> <%= totals.h %>h <%= totals.m %>m (<%= totals.minutes %> min)</p>
+  <p>
+    <strong>Total:</strong> <%= totals.h %>h <%= totals.m %>m (<%=
+    totals.minutes %> min)
+  </p>
   <div id="divAddButton" class="topButton no-print">+</div>
   <table>
     <thead>
@@ -25,7 +28,8 @@
     <tbody>
       <% groups.forEach(g => { %>
       <!-- lignes du jour -->
-      <% g.commits.forEach(c => { %> <%- include('_commitRow', { c }) %> <% }) %>
+      <% g.commits.forEach(c => { %> <%- include('_commitRow', { c }) %> <% })
+      %>
       <!-- sous-total du jour -->
       <tr style="background: #fafafa; font-weight: bold">
         <td colspan="3" style="text-align: right"><%= g.label %></td>
@@ -40,7 +44,10 @@
   <% } %>
 </main>
 <script>
-  // Input form
+  // 1. Initialisation des données (pour résoudre ReferenceError sur 'exceptions')
+  // Si les exceptions sont chargées lors du rendu de la page, ajustez cette ligne.
+  // Sinon, l'initialisation à '[]' est nécessaire pour que le script de suppression fonctionne.
+  let exceptions = []; // Si exceptions existe déjà dans le scope de la page (par EJS), vous n'aurez peut-être pas besoin de la déclarer, // mais l'erreur "exceptions is not defined" indique le contraire. // 2. Input form (Ces déclarations sont maintenant uniques)
   const openBtn = document.getElementById("divAddButton");
   const closeBtn = document.getElementById("closeBtn");
   const overlay = document.getElementById("overlay");
@@ -53,9 +60,9 @@
     numDuration.value = null;
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    datDate.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-      d.getMinutes()
-    )}`;
+    datDate.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate()
+    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     overlay.classList.add("active");
     hidSHA.value = "-";
     exceptionId.value = "-";
@@ -89,7 +96,7 @@
         date: new Date(fd.get("date")).toISOString(),
         duration: Number(fd.get("duration")),
         status: fd.get("status"),
-        author: repoOwner
+        author: repoOwner,
       });
     }
     saveData(exceptions);
@@ -103,10 +110,9 @@
       heaInputForm.innerText = "Modification d'une entrée";
       const d = new Date(row.dataset.date);
       const pad = (n) => String(n).padStart(2, "0");
-      datDate.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-        d.getMinutes()
-      )}`;
-      // Load form fields with entry's current values
+      datDate.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+        d.getDate()
+      )}T${pad(d.getHours())}:${pad(d.getMinutes())}`; // Load form fields with entry's current values
       txtName.value = row.childNodes[3].innerText;
       txtDescription.value = row.childNodes[5].innerText;
       numDuration.value = parseInt(row.dataset.duration);
@@ -116,6 +122,51 @@
       url.value = row.dataset.url;
       dpdStatus.value = row.dataset.status;
       author.value = row.dataset.author;
+    });
+  }); // 3. Logique de suppression d'entrée (déplacée ici)
+
+  function saveData(data) {
+    console.log(
+      "Sauvegarde des données. Le tableau exceptions a été mis à jour:",
+      data
+    ); // C'est ici que votre véritable logique de sauvegarde (LocalStorage, Fetch vers API, etc.) devrait aller.
+  } // Initialisation des données
+
+  // ... (code précédent) ...
+  document.querySelectorAll(".delete-btn").forEach((button) => {
+    button.addEventListener("click", async (e) => {
+      // ⬅️ Rendre la fonction ASYNCHRONE
+      e.stopPropagation();
+      const exceptionId = e.target.dataset.exceptionid;
+
+      if (confirm("Êtes-vous sûr de vouloir supprimer cette entrée ?")) {
+        // 1. Envoi de la requête de suppression au serveur
+        try {
+          const response = await fetch("/delete", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ exceptionId: exceptionId }),
+          });
+
+          if (response.ok) {
+            // 2. Si la suppression réussit sur le serveur, masquer la ligne côté client
+            const row = e.target.closest("tr");
+            if (row) {
+              row.style.display = "none"; // Masque la ligne du tableau
+            }
+            // Recharger seulement si vous voulez mettre à jour les totaux globaux,
+            // sinon, supprimez la ligne suivante.
+            window.location.reload();
+          } else {
+            alert("Erreur lors de la suppression de l'entrée.");
+          }
+        } catch (error) {
+          console.error("Erreur réseau:", error);
+          alert("Erreur de connexion lors de la suppression.");
+        }
+      }
     });
   });
 </script>

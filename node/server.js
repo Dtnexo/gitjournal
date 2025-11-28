@@ -26,7 +26,8 @@ app.use(express.json());
 
 function ghHeaders() {
   const h = { Accept: "application/vnd.github+json" };
-  if (process.env.GITHUB_TOKEN) h["Authorization"] = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (process.env.GITHUB_TOKEN)
+    h["Authorization"] = `Bearer ${process.env.GITHUB_TOKEN}`;
   return h;
 }
 
@@ -51,7 +52,11 @@ async function fetchAllCommits({ owner, repo, branch, since }) {
   let all = [];
   let keep = true;
   while (keep) {
-    const params = new URLSearchParams({ sha: branch, per_page: `${perPage}`, page: `${page}` });
+    const params = new URLSearchParams({
+      sha: branch,
+      per_page: `${perPage}`,
+      page: `${page}`,
+    });
     if (since) params.set("since", since);
     const url = `${GH}/repos/${owner}/${repo}/commits?${params}`;
     const r = await fetch(url, { headers: ghHeaders() });
@@ -68,7 +73,9 @@ function groom(commit) {
   // 1ère ligne=titre, 2e ligne=meta [hh][mm][status], reste=description
   let duration = 0;
   let status = "";
-  const lines = commit.commit.message.split("\n").filter((l) => l.trim() !== "");
+  const lines = commit.commit.message
+    .split("\n")
+    .filter((l) => l.trim() !== "");
   if (lines.length > 1) {
     const metaLine = lines[1];
     const matches = [...metaLine.matchAll(/\[(.*?)\]/g)].map((m) => m[1]);
@@ -93,12 +100,14 @@ function groom(commit) {
     duration,
     status,
     author: commit.author?.login || commit.commit?.author?.name || "?",
-    url: commit.html_url
+    url: commit.html_url,
   };
 }
 
 function totalDuration(commits) {
-  const mins = commits.reduce((acc, c) => acc + (Number(c.duration) || 0), 0);
+  const mins = commits
+    .filter((c) => !c.deleted) // ⬅️ AJOUTER CE FILTRE
+    .reduce((acc, c) => acc + (Number(c.duration) || 0), 0);
   const h = Math.floor(mins / 60),
     m = mins % 60;
   return { minutes: mins, h, m };
@@ -106,16 +115,25 @@ function totalDuration(commits) {
 
 // helpers de format
 const fmtDayLabel = (d) =>
-  new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(d));
+  new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(d));
 
 const toDayKey = (isoLike) => new Date(isoLike).toISOString().slice(0, 10); // "YYYY-MM-DD"
 
-const sumMinutes = (items) => items.reduce((acc, c) => acc + (c.duration || 0), 0);
+const sumMinutes = (items) =>
+  items
+    .filter((c) => !c.deleted) // ⬅️ AJOUTER CE FILTRE
+    .reduce((acc, c) => acc + (c.duration || 0), 0);
 
 // entries: [{ date: ISO, duration: minutes, ... }]
 function groupByDay(entries) {
   // assure l'ordre chronologique croissant (ou inverse si tu préfères)
-  const sorted = [...entries].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const sorted = [...entries].sort(
+    (a, b) => new Date(a.date) - new Date(b.date)
+  );
 
   const groupsMap = new Map(); // préserve l'ordre d'insertion
   for (const c of sorted) {
@@ -135,12 +153,42 @@ function groupByDay(entries) {
       total: {
         minutes,
         h: Math.floor(minutes / 60),
-        m: minutes % 60
-      }
+        m: minutes % 60,
+      },
     });
   }
   return groups;
 }
+// Nouvelle fonction pour marquer une entrée comme supprimée (deleted: true)
+async function deleteException(exceptionId) {
+  const list = await readExceptions();
+  const existingIndex = list.findIndex((e) => e.id == exceptionId);
+
+  if (existingIndex === -1) {
+    throw new Error(`Exception non trouvée pour l'ID: ${exceptionId}`);
+  }
+
+  const existing = list[existingIndex]; // Marquer l'entrée comme supprimée
+  existing.deleted = true; // Pour les entrées basées sur un commit (commitpatch), // nous pouvons techniquement les retirer complètement, // mais les garder comme "deleted" est plus sûr pour la traçabilité.
+  await writeExceptions(list);
+}
+
+// POST supprimer une exception
+app.post("/delete", async (req, res) => {
+  try {
+    const exceptionId = req.body.exceptionId;
+    if (!exceptionId || exceptionId === "-") {
+      return res
+        .status(400)
+        .json({ error: "ID d'exception requis pour la suppression" });
+    }
+
+    await deleteException(exceptionId);
+    return res.redirect("/jdt"); // Recharge la page après la suppression
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // === Exceptions.json (lecture/écriture) ===
 const DATA_DIR = path.join(__dirname, "data");
@@ -172,8 +220,10 @@ function validateException(x) {
   // minimal: name, date (ISO), duration en minutes
   if (!x || typeof x !== "object") return "Objet invalide";
   if (!x.name) return "Champ 'name' requis";
-  if (!x.date || isNaN(new Date(x.date))) return "Champ 'date' invalide (ISO attendu)";
-  if (x.duration == null || isNaN(Number(x.duration))) return "Champ 'duration' requis (minutes)";
+  if (!x.date || isNaN(new Date(x.date)))
+    return "Champ 'date' invalide (ISO attendu)";
+  if (x.duration == null || isNaN(Number(x.duration)))
+    return "Champ 'duration' requis (minutes)";
   return null;
 }
 
@@ -188,7 +238,7 @@ app.get(["/", "/jdt"], async (req, res) => {
     const since = new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
       month: "short",
-      year: "numeric"
+      year: "numeric",
     }).format(date);
 
     const branch = process.env.BRANCH || "main";
@@ -212,7 +262,9 @@ app.get(["/", "/jdt"], async (req, res) => {
       return e;
     });
     // Ajouter les entrées "commitless"
-    const allEntriesReady = patched.concat(exc.filter((e) => e.type == "commitless"));
+    const allEntriesReady = patched.concat(
+      exc.filter((e) => e.type == "commitless")
+    );
     // grouper + totaux
     const groups = groupByDay(allEntriesReady);
     const totals = totalDuration(allEntriesReady);
@@ -224,7 +276,7 @@ app.get(["/", "/jdt"], async (req, res) => {
       selectedBranch: branch,
       since,
       groups,
-      totals
+      totals,
     });
   } catch (e) {
     console.error(e);
@@ -275,7 +327,7 @@ async function addNewCommitlessEntry(ex) {
     date: new Date(ex.date).toISOString(),
     duration: Number(ex.duration) || 0,
     status: ex.status || "",
-    author: process.env.USER
+    author: process.env.USER,
   };
   list.push(newentry);
   await writeExceptions(list);
@@ -294,7 +346,7 @@ async function addNewCommitPatchEntry(ex) {
     duration: Number(ex.duration) || 0,
     status: ex.status || "Done",
     author: ex.author || "?",
-    patch: true
+    patch: true,
   };
   list.push(newentry);
   await writeExceptions(list);

@@ -13,5 +13,23 @@ const exceptions = [
     "description": "jkasdhfsékjgfsahkjsdgfhksdgf",
     "date": "2025-05-28T08:40",
     "duration": "50"
+  },
+  {
+    "patch": true,
+    "name": "doc(githubProjetct) faire la planif ",
+    "description": "Faire des user stories + test d'acceptance et faire la planification pour chaque semaine",
+    "date": "2025-11-07T10:24:00.000Z",
+    "duration": 35,
+    "status": "Done",
+    "author": "Dtnexo"
+  },
+  {
+    "patch": true,
+    "name": "feat(maquette) update de la maquette ",
+    "description": "Faire quelque retouche sur la maquette",
+    "date": "2025-11-14T10:24:00.000Z",
+    "duration": 20,
+    "status": "Done",
+    "author": "Dtnexo"
   }
 ]
